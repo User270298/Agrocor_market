@@ -1,0 +1,5 @@
+aiogram==3.12.0
+python-dotenv==0.21.1
+psycopg2
+asyncpg
+SQLAlchemy
