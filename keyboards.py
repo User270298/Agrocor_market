@@ -49,7 +49,7 @@ def create_culture_keyboard(cultures):
 
     # Создаем массив кнопок
     keyboard_buttons = [
-        [InlineKeyboardButton(text=culture, callback_data=f"culture_{hash(culture)}") for culture in row]
+        [InlineKeyboardButton(text=culture, callback_data=f"culture_{i}") for i, culture in enumerate(row)]
         for row in rows
     ]
     # keyboard_buttons.append([InlineKeyboardButton(text="🔙Назад", callback_data="back_buy_keyboard")])
@@ -64,9 +64,10 @@ def create_regions_keyboard(regions):
 
     # Создаем массив кнопок
     keyboard_buttons = [
-        [InlineKeyboardButton(text=region, callback_data=f"region_{hash(region)}") for region in row]
+        [InlineKeyboardButton(text=region, callback_data=f"region_{i}") for i, region in enumerate(row)]
         for row in rows
     ]
+
     # Создаем клавиатуру
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     return keyboard
@@ -100,7 +101,7 @@ def get_culture_keyboard(cultures):
 
     # Создаем массив кнопок
     keyboard_buttons = [
-        [InlineKeyboardButton(text=culture, callback_data=f"cult_{hash(culture)}") for culture in row]
+        [InlineKeyboardButton(text=culture, callback_data=f"cult_{i}") for i, culture in enumerate(row)]
         for row in rows
     ]
     # keyboard_buttons.append([InlineKeyboardButton(text="🔙Назад", callback_data="back_buy_keyboard")])
@@ -110,14 +111,33 @@ def get_culture_keyboard(cultures):
 
 
 def get_region_keyboard(regions):
-    # Разбиваем список регионов на строки по 2 элемента
+    # Разбиваем список регионов на строки по 3 элемента
     rows = [regions[i:i + 3] for i in range(0, len(regions), 3)]
-    # Создаем массив кнопок
+
+    # Создаем массив кнопок с нумерацией
     keyboard_buttons = [
-        [InlineKeyboardButton(text=region, callback_data=f"reg_{hash(region)}") for region in row]
+        [InlineKeyboardButton(text=region, callback_data=f"reg_{i}") for i, region in enumerate(row)]
         for row in rows
     ]
-    # Добавляем кнопку "Назад"
-    # keyboard_buttons.append([InlineKeyboardButton(text="🔙Назад", callback_data="back_culture")])
+
+    # Создаем клавиатуру
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    return keyboard
+
+
+
+def contact_trader():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Связаться с трейдером", url="https://wa.me/+79094213334")],
+        [InlineKeyboardButton(text='Перейти в главное меню', callback_data='main_menu')]
+    ])
+    return keyboard
+
+
+def subscription_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='📋Подписаться', callback_data='approve_subscription')],
+        [InlineKeyboardButton(text='Отписаться', callback_data='cancel_subscription')],
+        [InlineKeyboardButton(text='Перейти в главное меню', callback_data='main_menu')]
+    ])
     return keyboard

@@ -4,6 +4,7 @@ from models import Users, ProductBuy, ProductSell
 from sqlalchemy.future import select
 import logging
 from sqlalchemy import update
+from sqlalchemy.sql import func
 
 
 async def init_db():
@@ -15,10 +16,10 @@ async def init_db():
         logging.error(f"Database initialization failed: {e}")
 
 
-async def add_user(telephon: str, name: str, telegram_id: int):
+async def add_user(telephon: str, name: str, telegram_id: int, subscribe: str = 'No'):
     async with async_session() as session:
         async with session.begin():
-            new_user = Users(telephon=telephon, name=name, telegram_id=telegram_id)
+            new_user = Users(telephon=telephon, name=name, telegram_id=telegram_id, subscribe=subscribe)
             session.add(new_user)
         print(f'User {new_user.name} added successfully')
 
@@ -93,6 +94,14 @@ async def add_product_sell(user_id: int, name: str, location: str, date_at: str,
         return new_product.id
 
 
+async def get_product(product_id: int, table: str):
+    async with async_session() as session:
+        model = ProductBuy if table == 'ProductBuy' else ProductSell
+        result = await session.execute(select(model).where(model.id == product_id))
+        product = result.scalar_one_or_none()
+        return product
+
+
 async def update_status_product(id: int, status: str, table: Base):
     async with async_session() as session:
         model = ProductBuy if table == 'ProductBuy' else ProductSell
@@ -113,7 +122,6 @@ async def get_prices_by_culture_and_region_buy(culture: str, region: str):
         return result.scalars().all()
 
 
-
 async def get_prices_by_culture_and_region_sell(culture: str, region: str):
     async with async_session() as session:
         # Фильтруем записи с нужной культурой, регионом и статусом 'approved'
@@ -124,3 +132,48 @@ async def get_prices_by_culture_and_region_sell(culture: str, region: str):
             .where(ProductSell.status == "approved")
         )
         return result.scalars().all()
+
+
+async def subscribe_decision(telegram_id: int, decision: str):
+    async with async_session() as session:
+        stmt = update(Users).where(Users.telegram_id == telegram_id).values(subscribe=decision)
+        await session.execute(stmt)
+        await session.commit()
+
+
+async def get_subscribed_users():
+    async with async_session() as session:
+        result = await session.execute(
+            select(Users.telegram_id).where(Users.subscribe == 'Yes')
+        )
+        return [row[0] for row in result.all()]
+
+
+async def get_statistics():
+    async with async_session() as session:
+        # Подсчитываем общее количество пользователей
+        total_users_query = select(func.count(Users.id))
+        total_users = (await session.execute(total_users_query)).scalar()
+
+        # Подсчитываем количество заявок на покупку со статусом "approved"
+        total_buy_requests_query = select(func.count(ProductBuy.id)).where(ProductBuy.status == "approved")
+        total_buy_requests = (await session.execute(total_buy_requests_query)).scalar()
+
+        # Подсчитываем количество заявок на продажу со статусом "approved"
+        total_sell_requests_query = select(func.count(ProductSell.id)).where(ProductSell.status == "approved")
+        total_sell_requests = (await session.execute(total_sell_requests_query)).scalar()
+
+        # Подсчитываем активных пользователей (тех, кто разместил заявки)
+        active_users_query = select(func.count(ProductBuy.user_id.distinct())).where(ProductBuy.status == "approved")
+        active_users_buy = (await session.execute(active_users_query)).scalar()
+
+        active_users_sell_query = select(func.count(ProductSell.user_id.distinct())).where(ProductSell.status == "approved")
+        active_users_sell = (await session.execute(active_users_sell_query)).scalar()
+
+        active_users = active_users_buy + active_users_sell
+
+        # Подсчитываем подписанных пользователей
+        subscribed_users_query = select(func.count(Users.id)).where(Users.subscribe == "Yes")
+        subscribed_users = (await session.execute(subscribed_users_query)).scalar()
+
+        return total_users, total_buy_requests, total_sell_requests, active_users, subscribed_users

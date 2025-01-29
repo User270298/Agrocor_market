@@ -25,3 +25,23 @@ async_session = sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+# from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+# from sqlalchemy.orm import sessionmaker
+# from sqlalchemy.ext.declarative import declarative_base
+# import os
+#
+# Base = declarative_base()
+#
+# # Используем SQLite вместо PostgreSQL
+# DATABASE_URL = "sqlite+aiosqlite:///./agrocor.db"  # Файл базы данных SQLite
+#
+# # Создаем асинхронный движок
+# engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+#
+# # Создаем сессию
+# async_session = sessionmaker(
+#     engine,
+#     class_=AsyncSession,
+#     expire_on_commit=False,
+# )
