@@ -5,7 +5,7 @@ from sqlalchemy.future import select
 import logging
 from sqlalchemy import update
 from sqlalchemy.sql import func
-
+from typing import List, Optional
 
 async def init_db():
     try:
@@ -58,15 +58,14 @@ async def get_user_telegram_id_by_product_id(product_id: int, table: str) -> int
         return None
 
 
-async def add_product_buy(user_id: int, name: str, location: str, date_at: str, price_up: int, price_down: int) -> int:
+async def add_product_buy(user_id: int, name: str, location: str, date_at: str, basis: str, price: int) -> int:
     async with async_session() as session:
         new_product = ProductBuy(
             name=name,
             location=location,
+            basis=basis,
             date_at=date_at,
-            price_up=price_up,
-            price_down=price_down,
-            price_middle=(price_up + price_down) // 2,
+            price=price,
             status='pending',
             user_id=user_id
         )
@@ -76,15 +75,14 @@ async def add_product_buy(user_id: int, name: str, location: str, date_at: str, 
         return new_product.id
 
 
-async def add_product_sell(user_id: int, name: str, location: str, date_at: str, price_up: int, price_down: int) -> int:
+async def add_product_sell(user_id: int, name: str, location: str, date_at: str, basis: str, price: int) -> int:
     async with async_session() as session:
         new_product = ProductSell(
             name=name,
             location=location,
+            basis=basis,
             date_at=date_at,
-            price_up=price_up,
-            price_down=price_down,
-            price_middle=(price_up + price_down) // 2,
+            price=price,
             status='pending',
             user_id=user_id
         )
@@ -110,28 +108,6 @@ async def update_status_product(id: int, status: str, table: Base):
         await session.commit()
 
 
-async def get_prices_by_culture_and_region_buy(culture: str, region: str):
-    async with async_session() as session:
-        # Фильтруем записи с нужной культурой, регионом и статусом 'approved'
-        result = await session.execute(
-            select(ProductBuy)
-            .where(ProductBuy.name == culture)
-            .where(ProductBuy.location == region)
-            .where(ProductBuy.status == "approved")
-        )
-        return result.scalars().all()
-
-
-async def get_prices_by_culture_and_region_sell(culture: str, region: str):
-    async with async_session() as session:
-        # Фильтруем записи с нужной культурой, регионом и статусом 'approved'
-        result = await session.execute(
-            select(ProductSell)
-            .where(ProductSell.name == culture)
-            .where(ProductSell.location == region)
-            .where(ProductSell.status == "approved")
-        )
-        return result.scalars().all()
 
 
 async def subscribe_decision(telegram_id: int, decision: str):
@@ -152,8 +128,9 @@ async def get_subscribed_users():
 async def get_statistics():
     async with async_session() as session:
         # Подсчитываем общее количество пользователей
-        total_users_query = select(func.count(Users.id))
-        total_users = (await session.execute(total_users_query)).scalar()
+        query = select(func.count()).select_from(Users)
+        result = await session.execute(query)
+        total_users = result.scalar_one_or_none()
 
         # Подсчитываем количество заявок на покупку со статусом "approved"
         total_buy_requests_query = select(func.count(ProductBuy.id)).where(ProductBuy.status == "approved")
@@ -167,7 +144,8 @@ async def get_statistics():
         active_users_query = select(func.count(ProductBuy.user_id.distinct())).where(ProductBuy.status == "approved")
         active_users_buy = (await session.execute(active_users_query)).scalar()
 
-        active_users_sell_query = select(func.count(ProductSell.user_id.distinct())).where(ProductSell.status == "approved")
+        active_users_sell_query = select(func.count(ProductSell.user_id.distinct())).where(
+            ProductSell.status == "approved")
         active_users_sell = (await session.execute(active_users_sell_query)).scalar()
 
         active_users = active_users_buy + active_users_sell
@@ -177,3 +155,37 @@ async def get_statistics():
         subscribed_users = (await session.execute(subscribed_users_query)).scalar()
 
         return total_users, total_buy_requests, total_sell_requests, active_users, subscribed_users
+
+
+from sqlalchemy import or_, func
+
+async def get_prices_by_culture_and_region_buy(culture: str, location: str, basis_regions: List[str]):
+    async with async_session() as session:
+        query = select(ProductBuy).where(
+            ProductBuy.name == culture,
+            ProductBuy.location == location,
+            ProductBuy.status == 'approved',  # ✅ Исправлена ошибка
+            or_(
+                ProductBuy.basis.is_(None),  # ✅ Для самовывоза (если база NULL)
+                *[func.lower(ProductBuy.basis).like(f"%{region.lower()}%") for region in basis_regions]  # ✅ Поиск в строке
+            )
+        )
+
+        result = await session.execute(query)
+        return result.scalars().all()
+
+
+async def get_prices_by_culture_and_region_sell(culture: str, location: str, basis_regions: List[str]):
+    async with async_session() as session:
+        query = select(ProductSell).where(
+            ProductSell.name == culture,
+            ProductSell.location == location,
+            ProductSell.status == 'approved',  # ✅ Исправлена ошибка
+            or_(
+                ProductSell.basis.is_(None),  # ✅ Если база NULL (самовывоз)
+                *[func.lower(ProductSell.basis).like(f"%{region.lower()}%") for region in basis_regions]  # ✅ Поиск в строке
+            )
+        )
+
+        result = await session.execute(query)
+        return result.scalars().all()
