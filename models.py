@@ -23,9 +23,7 @@ class ProductBuy(Base):
     name = Column(String, index=True)
     location = Column(String, index=True)
     date_at = Column(DateTime, index=True)
-    price_up = Column(Integer)
-    price_down = Column(Integer)
-    price_middle = Column(Integer)
+    price = Column(Integer)
     status = Column(String, index=True)
 
     user_id = Column(Integer, ForeignKey('users.id'), index=True)
@@ -39,9 +37,7 @@ class ProductSell(Base):
     name = Column(String, index=True)
     location = Column(String, index=True)
     date_at = Column(DateTime, index=True)
-    price_up = Column(Integer)
-    price_down = Column(Integer)
-    price_middle = Column(Integer)
+    price = Column(Integer)
     status = Column(String, index=True)
 
     user_id = Column(Integer, ForeignKey('users.id'), index=True)

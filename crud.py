@@ -3,7 +3,7 @@ from database import engine, Base, async_session
 from models import Users, ProductBuy, ProductSell
 from sqlalchemy.future import select
 import logging
-from sqlalchemy import update
+from sqlalchemy import update, union
 from sqlalchemy.sql import func
 
 
@@ -58,15 +58,13 @@ async def get_user_telegram_id_by_product_id(product_id: int, table: str) -> int
         return None
 
 
-async def add_product_buy(user_id: int, name: str, location: str, date_at: str, price_up: int, price_down: int) -> int:
+async def add_product_buy(user_id: int, name: str, location: str, date_at: str, price: int) -> int:
     async with async_session() as session:
         new_product = ProductBuy(
             name=name,
             location=location,
             date_at=date_at,
-            price_up=price_up,
-            price_down=price_down,
-            price_middle=(price_up + price_down) // 2,
+            price=price,
             status='pending',
             user_id=user_id
         )
@@ -76,15 +74,13 @@ async def add_product_buy(user_id: int, name: str, location: str, date_at: str, 
         return new_product.id
 
 
-async def add_product_sell(user_id: int, name: str, location: str, date_at: str, price_up: int, price_down: int) -> int:
+async def add_product_sell(user_id: int, name: str, location: str, date_at: str, price: int) -> int:
     async with async_session() as session:
         new_product = ProductSell(
             name=name,
             location=location,
             date_at=date_at,
-            price_up=price_up,
-            price_down=price_down,
-            price_middle=(price_up + price_down) // 2,
+            price=price,
             status='pending',
             user_id=user_id
         )
@@ -152,8 +148,9 @@ async def get_subscribed_users():
 async def get_statistics():
     async with async_session() as session:
         # Подсчитываем общее количество пользователей
-        total_users_query = select(func.count(Users.id))
-        total_users = (await session.execute(total_users_query)).scalar()
+        query = select(func.count()).select_from(Users)
+        result = await session.execute(query)
+        total_users = result.scalar_one_or_none()
 
         # Подсчитываем количество заявок на покупку со статусом "approved"
         total_buy_requests_query = select(func.count(ProductBuy.id)).where(ProductBuy.status == "approved")
@@ -167,7 +164,8 @@ async def get_statistics():
         active_users_query = select(func.count(ProductBuy.user_id.distinct())).where(ProductBuy.status == "approved")
         active_users_buy = (await session.execute(active_users_query)).scalar()
 
-        active_users_sell_query = select(func.count(ProductSell.user_id.distinct())).where(ProductSell.status == "approved")
+        active_users_sell_query = select(func.count(ProductSell.user_id.distinct())).where(
+            ProductSell.status == "approved")
         active_users_sell = (await session.execute(active_users_sell_query)).scalar()
 
         active_users = active_users_buy + active_users_sell
@@ -177,3 +175,31 @@ async def get_statistics():
         subscribed_users = (await session.execute(subscribed_users_query)).scalar()
 
         return total_users, total_buy_requests, total_sell_requests, active_users, subscribed_users
+
+
+async def get_regions_for_culture(culture: str):
+    async with async_session() as session:
+        # Запрос на получение регионов для выбранной культуры из таблиц ProductBuy и ProductSell с фильтром по статусу "approved"
+
+        # Для ProductBuy
+        buy_query = select(ProductBuy.location).where(
+            ProductBuy.name == culture,  # Название культуры
+            ProductBuy.status == 'approved'  # Статус должен быть "approved"
+        )
+
+        # Для ProductSell
+        sell_query = select(ProductSell.location).where(
+            ProductSell.name == culture,  # Название культуры
+            ProductSell.status == 'approved'  # Статус должен быть "approved"
+        )
+
+        # Выполним оба запроса и объединяем их
+        result = await session.execute(
+            buy_query.union(sell_query)
+        )
+
+        # Извлекаем и возвращаем список регионов
+        regions = result.scalars().all()
+    return regions
+
+# print(asyncio.run(get_regions_for_culture('Горчица черная')))
