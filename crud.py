@@ -58,14 +58,19 @@ async def get_user_telegram_id_by_product_id(product_id: int, table: str) -> int
         return None
 
 
-async def add_product_buy(user_id: int, name: str, location: str, date_at: str, price: int) -> int:
+async def add_product_buy(user_id: int, name: str, region: str, district: str, city: str, 
+                         date_at: str, price: int, vat_required: str, other_quality: str) -> int:
     async with async_session() as session:
         new_product = ProductBuy(
             name=name,
-            location=location,
+            region=region,
+            district=district,
+            city=city,
             date_at=date_at,
             price=price,
             status='pending',
+            vat_required=vat_required,
+            other_quality=other_quality,
             user_id=user_id
         )
         session.add(new_product)
@@ -74,16 +79,24 @@ async def add_product_buy(user_id: int, name: str, location: str, date_at: str, 
         return new_product.id
 
 
-async def add_product_sell(user_id: int, name: str, location: str, date_at: str, price: int) -> int:
+async def add_product_sell(user_id: int, name: str, region: str, district: str, city: str,
+                          date_at: str, price: int, vat_included: str, other_quality:str) -> int:
     async with async_session() as session:
         new_product = ProductSell(
             name=name,
-            location=location,
+            region=region,
+            district=district,
+            city=city,
             date_at=date_at,
             price=price,
             status='pending',
+            vat_included=vat_included,
+            other_quality=other_quality,
             user_id=user_id
         )
+        
+        
+        
         session.add(new_product)
         await session.commit()
         await session.refresh(new_product)
@@ -112,7 +125,7 @@ async def get_prices_by_culture_and_region_buy(culture: str, region: str):
         result = await session.execute(
             select(ProductBuy)
             .where(ProductBuy.name == culture)
-            .where(ProductBuy.location == region)
+            .where(ProductBuy.region == region)
             .where(ProductBuy.status == "approved")
         )
         return result.scalars().all()
@@ -124,7 +137,7 @@ async def get_prices_by_culture_and_region_sell(culture: str, region: str):
         result = await session.execute(
             select(ProductSell)
             .where(ProductSell.name == culture)
-            .where(ProductSell.location == region)
+            .where(ProductSell.region == region)
             .where(ProductSell.status == "approved")
         )
         return result.scalars().all()
@@ -148,9 +161,9 @@ async def get_subscribed_users():
 async def get_statistics():
     async with async_session() as session:
         # Подсчитываем общее количество пользователей
-        query = select(func.count()).select_from(Users)
+        query = select(func.count(Users.id))
         result = await session.execute(query)
-        total_users = result.scalar_one_or_none()
+        total_users = result.scalar() 
 
         # Подсчитываем количество заявок на покупку со статусом "approved"
         total_buy_requests_query = select(func.count(ProductBuy.id)).where(ProductBuy.status == "approved")
@@ -182,13 +195,13 @@ async def get_regions_for_culture(culture: str):
         # Запрос на получение регионов для выбранной культуры из таблиц ProductBuy и ProductSell с фильтром по статусу "approved"
 
         # Для ProductBuy
-        buy_query = select(ProductBuy.location).where(
+        buy_query = select(ProductBuy.region).where(
             ProductBuy.name == culture,  # Название культуры
             ProductBuy.status == 'approved'  # Статус должен быть "approved"
         )
 
         # Для ProductSell
-        sell_query = select(ProductSell.location).where(
+        sell_query = select(ProductSell.region).where(
             ProductSell.name == culture,  # Название культуры
             ProductSell.status == 'approved'  # Статус должен быть "approved"
         )
@@ -220,3 +233,48 @@ async def get_available_cultures():
         unique_cultures = list(set(cultures_buy + cultures_sell))
 
     return unique_cultures
+
+async def get_cities_by_district(district: str):
+    """Получает список населенных пунктов в указанном районе"""
+    async with async_session() as session:
+        # Поиск в таблице покупок
+        buy_query = select(distinct(ProductBuy.city)).where(
+            ProductBuy.district == district,
+            ProductBuy.status == 'approved'
+        )
+        
+        # Поиск в таблице продаж
+        sell_query = select(distinct(ProductSell.city)).where(
+            ProductSell.district == district,
+            ProductSell.status == 'approved'
+        )
+        
+        # Объединяем результаты
+        result = await session.execute(
+            buy_query.union(sell_query)
+        )
+        
+        return result.scalars().all()
+
+
+async def get_districts_by_region(region: str):
+    """Получает список районов в указанной области"""
+    async with async_session() as session:
+        # Поиск в таблице покупок
+        buy_query = select(distinct(ProductBuy.district)).where(
+            ProductBuy.region == region,
+            ProductBuy.status == 'approved'
+        )
+        
+        # Поиск в таблице продаж
+        sell_query = select(distinct(ProductSell.district)).where(
+            ProductSell.region == region,
+            ProductSell.status == 'approved'
+        )
+        
+        # Объединяем результаты
+        result = await session.execute(
+            buy_query.union(sell_query)
+        )
+        
+        return result.scalars().all()

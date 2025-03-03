@@ -21,10 +21,14 @@ class ProductBuy(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, index=True)
-    location = Column(String, index=True)
+    region = Column(String, index=True)  # область
+    district = Column(String, index=True)  # район
+    city = Column(String, index=True)  # населенный пункт
     date_at = Column(DateTime, index=True)
     price = Column(Integer)
     status = Column(String, index=True)
+    vat_required = Column(String, default='No', index=True)  # работа с НДС
+    other_quality = Column(String, nullable=True)  # другие показатели
 
     user_id = Column(Integer, ForeignKey('users.id'), index=True)
     user = relationship('Users', back_populates='products_buy')
@@ -35,10 +39,14 @@ class ProductSell(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, index=True)
-    location = Column(String, index=True)
+    region = Column(String, index=True)  # область
+    district = Column(String, index=True)  # район
+    city = Column(String, index=True)  # населенный пункт
     date_at = Column(DateTime, index=True)
     price = Column(Integer)
     status = Column(String, index=True)
+    vat_required = Column(String, default='No', index=True)  # работа с НДС
+    other_quality = Column(String, nullable=True)  # другие показатели в свободной форме
 
     user_id = Column(Integer, ForeignKey('users.id'), index=True)
     user = relationship('Users', back_populates='products_sell')

@@ -146,3 +146,15 @@ def subscription_keyboard():
     ])
     return keyboard
 
+
+def create_vat_keyboard():
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да", callback_data="vat_Yes"),
+                InlineKeyboardButton(text="❌ Нет", callback_data="vat_No")
+            ]
+        ]
+    )
+    return keyboard
+
