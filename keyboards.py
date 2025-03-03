@@ -1,6 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.fsm.context import FSMContext
+
+from crud import get_regions_for_culture
 
 
 def keyboard_start():
@@ -19,7 +20,7 @@ def keyboard_start():
 def keyboard_main_menu():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='📊Аналитика', callback_data='analytics'),
-         InlineKeyboardButton(text='💵Цены', callback_data='prices')],
+         InlineKeyboardButton(text='💵Спрос и предложения', callback_data='prices')],
         [InlineKeyboardButton(text='🛒Купить/Продать', callback_data='buy'),
          InlineKeyboardButton(text='📋Подписка', callback_data='subscription')],
         [InlineKeyboardButton(text='⚙️Инструкция', callback_data='instruction'),
@@ -89,19 +90,44 @@ def admin_keyboard(product_id: int, table_name: str):
     return keyboard
 
 
+def get_price():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='Просмотр цен', callback_data='keyboard_price')],
+        [InlineKeyboardButton(text='🔙Назад', callback_data='main_menu')]
+    ])
+    return keyboard
+
+
 def get_culture_keyboard(cultures):
-    """Создает клавиатуру с кнопками культур по 2 в ряд."""
+    """Создает клавиатуру с кнопками культур по 2 в ряд, используя только доступные культуры."""
     keyboard_buttons = [
-        [InlineKeyboardButton(text=cultures[i], callback_data=f"cult_{i}"),
-         InlineKeyboardButton(text=cultures[i + 1], callback_data=f"cult_{i + 1}")]
-        if i + 1 < len(cultures) else [InlineKeyboardButton(text=cultures[i], callback_data=f"cult_{i}")]
+        [InlineKeyboardButton(text=cultures[i], callback_data=f"cult_{cultures[i]}"),
+         InlineKeyboardButton(text=cultures[i + 1], callback_data=f"cult_{cultures[i + 1]}")]
+        if i + 1 < len(cultures) else [InlineKeyboardButton(text=cultures[i], callback_data=f"cult_{cultures[i]}")]
         for i in range(0, len(cultures), 2)
     ]
+    keyboard_buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
-    # Добавляем кнопку "Назад"
-    # keyboard_buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_buy_keyboard")])
+
+async def get_region_keyboard(culture: str):
+    # Получаем регионы для культуры из базы данных
+    regions = await get_regions_for_culture(culture)
+
+    # Разбиваем список регионов на строки по 3 элемента
+    rows = [regions[i:i + 3] for i in range(0, len(regions), 3)]
+
+    # Создаем массив кнопок с текстом региона
+    keyboard_buttons = [
+        [InlineKeyboardButton(text=region, callback_data=f"reg_{region}") for region in row]
+        for row in rows
+    ]
+
+    # Добавляем кнопку возврата в начальное меню
+    keyboard_buttons.append([InlineKeyboardButton(text="Главное меню", callback_data="main_menu")])
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
 
 
 def contact_trader():
@@ -120,138 +146,3 @@ def subscription_keyboard():
     ])
     return keyboard
 
-
-def search_price():
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='🚛 Доставка', callback_data='search_delivery'),
-         InlineKeyboardButton(text='🏭 Самовывоз', callback_data='search_pickup')],
-    ])
-    return keyboard
-
-
-def keyboard_basis():
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='🚛 Доставка', callback_data='delivery'),
-         InlineKeyboardButton(text='🏭 Самовывоз', callback_data='pickup')],
-        [InlineKeyboardButton(text='Перейти в главное меню', callback_data='main_menu')]
-    ])
-    return keyboard
-
-
-async def keyboard_delivery(state: FSMContext, basis):
-    """Создает клавиатуру с возможностью выбора нескольких пунктов доставки."""
-    data = await state.get_data()  # Загружаем данные из состояния
-    selected_basis = data.get("selected_basis", [])  # Загружаем ранее выбранные пункты
-
-    keyboard_buttons = [
-        [
-            InlineKeyboardButton(
-                text=f"✅ {basis[i]}" if basis[i] in selected_basis else basis[i],
-                callback_data=f"basis_{i}"
-            ),
-            InlineKeyboardButton(
-                text=f"✅ {basis[i + 1]}" if i + 1 < len(basis) and basis[i + 1] in selected_basis else basis[i + 1],
-                callback_data=f"basis_{i + 1}"
-            ) if i + 1 < len(basis) else None,
-            InlineKeyboardButton(
-                text=f"✅ {basis[i + 2]}" if i + 2 < len(basis) and basis[i + 2] in selected_basis else basis[i + 2],
-                callback_data=f"basis_{i + 2}"
-            ) if i + 2 < len(basis) else None
-        ]
-        for i in range(0, len(basis), 3)
-    ]
-
-    # Фильтруем None (чтобы ряды были ровными)
-    keyboard_buttons = [list(filter(None, row)) for row in keyboard_buttons]
-
-    # Добавляем кнопки "Далее" и "Назад"
-    keyboard_buttons.append([
-        InlineKeyboardButton(text="Далее", callback_data="confirm_basis"),
-        # InlineKeyboardButton(text="🔙 Назад", callback_data="back_delivery_keyboard")
-    ])
-
-    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-
-
-def get_price():
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='Просмотр цен', callback_data='keyboard_price')],
-        [InlineKeyboardButton(text='🔙Назад', callback_data='main_menu')]
-    ])
-    return keyboard
-
-
-# ----------------------------------------------------------------------------
-def get_cult_keyboard(cultures):
-    """Создает inline-клавиатуру с культурами"""
-    keyboard_buttons = [
-        [
-            InlineKeyboardButton(text=cultures[i], callback_data=f"cu_{i}"),
-            InlineKeyboardButton(text=cultures[i + 1], callback_data=f"cu_{i + 1}")
-        ] if i + 1 < len(cultures) else [InlineKeyboardButton(text=cultures[i], callback_data=f"cu_{i}")]
-        for i in range(0, len(cultures), 2)
-    ]
-
-    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-
-
-def get_keyboard_basis():
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text='🚛 Доставка', callback_data='type_delivery'),
-         InlineKeyboardButton(text='🏭 Самовывоз', callback_data='type_pickup')],
-        # [InlineKeyboardButton(text='Перейти в главное меню', callback_data='main_menu')]
-    ])
-    return keyboard
-
-
-async def get_keyboard_basis_region(state: FSMContext, basis):
-    """Создает клавиатуру с возможностью выбора нескольких пунктов доставки."""
-    data = await state.get_data()
-
-    # Ensure 'selected_basis' key exists, otherwise default to an empty list
-    selected_basis = data.get("selected_basis", [])
-
-    keyboard_buttons = [
-        [
-            InlineKeyboardButton(
-                text=f"✅ {basis[i]}" if basis[i] in selected_basis else basis[i],
-                callback_data=f"sis_{i}"
-            ),
-            InlineKeyboardButton(
-                text=f"✅ {basis[i + 1]}" if i + 1 < len(basis) and basis[i + 1] in selected_basis else basis[i + 1],
-                callback_data=f"sis_{i + 1}"
-            ) if i + 1 < len(basis) else None,
-            InlineKeyboardButton(
-                text=f"✅ {basis[i + 2]}" if i + 2 < len(basis) and basis[i + 2] in selected_basis else basis[i + 2],
-                callback_data=f"sis_{i + 2}"
-            ) if i + 2 < len(basis) else None
-        ]
-        for i in range(0, len(basis), 3)
-    ]
-
-    # Remove None values to maintain structure
-    keyboard_buttons = [list(filter(None, row)) for row in keyboard_buttons]
-
-    # Add confirmation button
-    keyboard_buttons.append([
-        InlineKeyboardButton(text="Подтвердить", callback_data="conf_basis")
-    ])
-
-    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-
-def get_regions_keyboard(regions):
-    # Создаем массив кнопок по 3 в ряд
-    keyboard_buttons = [
-        [InlineKeyboardButton(text=regions[i], callback_data=f"gion_{i}"),
-         InlineKeyboardButton(text=regions[i + 1], callback_data=f"gion_{i + 1}"),
-         InlineKeyboardButton(text=regions[i + 2], callback_data=f"gion_{i + 2}")]
-        if i + 2 < len(regions) else
-        [InlineKeyboardButton(text=regions[i], callback_data=f"gion_{i}"),
-         InlineKeyboardButton(text=regions[i + 1], callback_data=f"gion_{i + 1}")]
-        if i + 1 < len(regions) else
-        [InlineKeyboardButton(text=regions[i], callback_data=f"gion_{i}")]
-        for i in range(0, len(regions), 3)
-    ]
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    return keyboard

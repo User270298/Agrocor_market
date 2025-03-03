@@ -3,9 +3,9 @@ from database import engine, Base, async_session
 from models import Users, ProductBuy, ProductSell
 from sqlalchemy.future import select
 import logging
-from sqlalchemy import update
+from sqlalchemy import update, union
 from sqlalchemy.sql import func
-from typing import List, Optional
+from sqlalchemy import distinct
 
 async def init_db():
     try:
@@ -58,12 +58,11 @@ async def get_user_telegram_id_by_product_id(product_id: int, table: str) -> int
         return None
 
 
-async def add_product_buy(user_id: int, name: str, location: str, date_at: str, basis: str, price: int) -> int:
+async def add_product_buy(user_id: int, name: str, location: str, date_at: str, price: int) -> int:
     async with async_session() as session:
         new_product = ProductBuy(
             name=name,
             location=location,
-            basis=basis,
             date_at=date_at,
             price=price,
             status='pending',
@@ -75,12 +74,11 @@ async def add_product_buy(user_id: int, name: str, location: str, date_at: str, 
         return new_product.id
 
 
-async def add_product_sell(user_id: int, name: str, location: str, date_at: str, basis: str, price: int) -> int:
+async def add_product_sell(user_id: int, name: str, location: str, date_at: str, price: int) -> int:
     async with async_session() as session:
         new_product = ProductSell(
             name=name,
             location=location,
-            basis=basis,
             date_at=date_at,
             price=price,
             status='pending',
@@ -108,6 +106,28 @@ async def update_status_product(id: int, status: str, table: Base):
         await session.commit()
 
 
+async def get_prices_by_culture_and_region_buy(culture: str, region: str):
+    async with async_session() as session:
+        # Фильтруем записи с нужной культурой, регионом и статусом 'approved'
+        result = await session.execute(
+            select(ProductBuy)
+            .where(ProductBuy.name == culture)
+            .where(ProductBuy.location == region)
+            .where(ProductBuy.status == "approved")
+        )
+        return result.scalars().all()
+
+
+async def get_prices_by_culture_and_region_sell(culture: str, region: str):
+    async with async_session() as session:
+        # Фильтруем записи с нужной культурой, регионом и статусом 'approved'
+        result = await session.execute(
+            select(ProductSell)
+            .where(ProductSell.name == culture)
+            .where(ProductSell.location == region)
+            .where(ProductSell.status == "approved")
+        )
+        return result.scalars().all()
 
 
 async def subscribe_decision(telegram_id: int, decision: str):
@@ -157,35 +177,46 @@ async def get_statistics():
         return total_users, total_buy_requests, total_sell_requests, active_users, subscribed_users
 
 
-from sqlalchemy import or_, func
-
-async def get_prices_by_culture_and_region_buy(culture: str, location: str, basis_regions: List[str]):
+async def get_regions_for_culture(culture: str):
     async with async_session() as session:
-        query = select(ProductBuy).where(
-            ProductBuy.name == culture,
-            ProductBuy.location == location,
-            ProductBuy.status == 'approved',  # ✅ Исправлена ошибка
-            or_(
-                ProductBuy.basis.is_(None),  # ✅ Для самовывоза (если база NULL)
-                *[func.lower(ProductBuy.basis).like(f"%{region.lower()}%") for region in basis_regions]  # ✅ Поиск в строке
-            )
+        # Запрос на получение регионов для выбранной культуры из таблиц ProductBuy и ProductSell с фильтром по статусу "approved"
+
+        # Для ProductBuy
+        buy_query = select(ProductBuy.location).where(
+            ProductBuy.name == culture,  # Название культуры
+            ProductBuy.status == 'approved'  # Статус должен быть "approved"
         )
 
-        result = await session.execute(query)
-        return result.scalars().all()
-
-
-async def get_prices_by_culture_and_region_sell(culture: str, location: str, basis_regions: List[str]):
-    async with async_session() as session:
-        query = select(ProductSell).where(
-            ProductSell.name == culture,
-            ProductSell.location == location,
-            ProductSell.status == 'approved',  # ✅ Исправлена ошибка
-            or_(
-                ProductSell.basis.is_(None),  # ✅ Если база NULL (самовывоз)
-                *[func.lower(ProductSell.basis).like(f"%{region.lower()}%") for region in basis_regions]  # ✅ Поиск в строке
-            )
+        # Для ProductSell
+        sell_query = select(ProductSell.location).where(
+            ProductSell.name == culture,  # Название культуры
+            ProductSell.status == 'approved'  # Статус должен быть "approved"
         )
 
-        result = await session.execute(query)
-        return result.scalars().all()
+        # Выполним оба запроса и объединяем их
+        result = await session.execute(
+            buy_query.union(sell_query)
+        )
+
+        # Извлекаем и возвращаем список регионов
+        regions = result.scalars().all()
+    return regions
+
+async def get_available_cultures():
+    """Получает уникальные культуры из таблиц ProductBuy и ProductSell"""
+    async with async_session() as session:
+        # Получаем уникальные культуры из обеих таблиц
+        result = await session.execute(
+            select(distinct(ProductBuy.name)).where(ProductBuy.status == "approved")
+        )
+        cultures_buy = result.scalars().all()
+
+        result = await session.execute(
+            select(distinct(ProductSell.name)).where(ProductSell.status == "approved")
+        )
+        cultures_sell = result.scalars().all()
+
+        # Объединяем списки и убираем дубликаты
+        unique_cultures = list(set(cultures_buy + cultures_sell))
+
+    return unique_cultures
