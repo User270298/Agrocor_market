@@ -161,9 +161,12 @@ async def get_subscribed_users():
 async def get_statistics():
     async with async_session() as session:
         # Подсчитываем общее количество пользователей
-        query = select(func.count(Users.id))
+        query = select(func.count(Users))
+        # Выполняем запрос
         result = await session.execute(query)
-        total_users = result.scalar() 
+        # Извлекаем результат (количество строк)
+        total_users = result.scalar()
+
 
         # Подсчитываем количество заявок на покупку со статусом "approved"
         total_buy_requests_query = select(func.count(ProductBuy.id)).where(ProductBuy.status == "approved")
@@ -278,3 +281,25 @@ async def get_districts_by_region(region: str):
         )
         
         return result.scalars().all()
+
+async def get_unique_regions():
+    """Получает уникальные регионы из таблиц ProductBuy и ProductSell."""
+    async with async_session() as session:
+        # Запрос для получения уникальных регионов из таблицы ProductBuy
+        buy_query = select(distinct(ProductBuy.region)).where(
+            ProductBuy.status == 'approved'  # Фильтр по статусу "approved"
+        )
+
+        # Запрос для получения уникальных регионов из таблицы ProductSell
+        sell_query = select(distinct(ProductSell.region)).where(
+            ProductSell.status == 'approved'  # Фильтр по статусу "approved"
+        )
+
+        # Объединяем результаты двух запросов
+        result = await session.execute(
+            buy_query.union(sell_query)
+        )
+
+        # Извлекаем и возвращаем список уникальных регионов
+        regions = result.scalars().all()
+        return regions

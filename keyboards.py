@@ -158,3 +158,12 @@ def create_vat_keyboard():
     )
     return keyboard
 
+def change_region_keyboard():
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text='Наиболее актуальные регионы', callback_data='actual')],
+            [InlineKeyboardButton(text='Все регионы', callback_data='all_region')],
+        ]
+    )
+    return keyboard
+
