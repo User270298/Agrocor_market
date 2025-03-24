@@ -288,7 +288,9 @@ async def culture(callback_query: CallbackQuery, state: FSMContext):
     culture = CULTURES[culture_index]
     await state.update_data(name=culture)
     await callback_query.message.answer(
-        f"Вы выбрали: *{culture}*.\nВыберите формат отображения регионов:\n\nОбращаем ваше внимание на то, что список актуальных регионов формируется в реальном времени и может быть дополнен позже._",
+        f"Вы выбрали: *{culture}*\n\n"
+        "Выберите формат отображения регионов:\n\n"
+        "_Обращаем ваше внимание на то, что список актуальных регионов формируется в реальном времени и может быть дополнен позже._",
         parse_mode='Markdown',
         reply_markup=change_region_keyboard())
 
@@ -296,13 +298,14 @@ async def culture(callback_query: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith('actual'))
 async def actual_region(callback_query: CallbackQuery, state: FSMContext):
     regions = await get_unique_regions()
+    await state.update_data(region_type='actual')
     await callback_query.message.answer(f"Укажите область:", parse_mode='Markdown',
                                         reply_markup=create_regions_keyboard(regions))
 
 
 @router.callback_query(F.data.startswith('all_region'))
 async def actual_region(callback_query: CallbackQuery, state: FSMContext):
-    regions = await get_unique_regions()
+    await state.update_data(region_type='all')
     await callback_query.message.answer(f"Укажите область:", parse_mode='Markdown',
                                         reply_markup=create_regions_keyboard(REGIONS))
 
@@ -310,7 +313,12 @@ async def actual_region(callback_query: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith('region_'))
 async def input_region(callback_query: CallbackQuery, state: FSMContext):
     region_index = int(callback_query.data.split('_')[1])
-    region = REGIONS[region_index]
+    user_data = await state.get_data()
+    if user_data['region_type'] == 'all':
+        region = REGIONS[region_index]
+    else:
+        regions = await get_unique_regions()
+        region = regions[region_index]
     await state.update_data(region=region)
     await callback_query.message.answer("Введите район:")
     await state.set_state(AddBuySell.district)
@@ -377,25 +385,38 @@ async def input_price_buy(message: Message, state: FSMContext):
     try:
         price = int(message.text)
         user_data = await state.get_data()
+        print(user_data)
         user_id = await get_user_id_by_telegram_id(message.from_user.id)
-
-        product_id = await add_product_buy(
-            name=user_data['name'],
-            region=user_data['region'],
-            district=user_data['district'],
-            city=user_data['city'],
-            date_at=user_data['date_at'],
-            price=price,
-            vat_required=user_data['vat_required'],
-            other_quality=user_data['other_quality'],
-            user_id=user_id
-        )
+        if user_data['action'] == 'buyers':
+            product_id = await add_product_buy(
+                name=user_data['name'],
+                region=user_data['region'],
+                district=user_data['district'],
+                city=user_data['city'],
+                date_at=user_data['date_at'],
+                price=price,
+                vat_required=user_data['vat_required'],
+                other_quality=user_data['other_quality'],
+                user_id=user_id
+            )
+        elif user_data['action'] == 'sellers':
+            product_id = await add_product_sell(
+                name=user_data['name'],
+                region=user_data['region'],
+                district=user_data['district'],
+                city=user_data['city'],
+                date_at=user_data['date_at'],
+                price=price,
+                vat_required=user_data['vat_required'],
+                other_quality=user_data['other_quality'],
+                user_id=user_id
+            )
 
         await message.answer("Данные успешно отправлены администратору на проверку! 🎉")
         text = await main_menu()
         await message.answer(text, parse_mode='Markdown', reply_markup=keyboard_main_menu())
         action = 'КУПИТЬ' if user_data['action'] == 'buyers' else "ПРОДАТЬ"
-
+        table = 'ProductBuy' if user_data['action'] == 'buyers' else 'ProductSell'
         for admin in ADMIN_ID:
             await message.bot.send_message(
                 chat_id=admin,
@@ -413,7 +434,7 @@ async def input_price_buy(message: Message, state: FSMContext):
 {'Цена с учетом НДС' if user_data['vat_required'] == 'Yes' else 'Цена без учета НДС'}: {price} Руб/МТ
 ''',
                 parse_mode='Markdown',
-                reply_markup=admin_keyboard(product_id, 'ProductBuy')
+                reply_markup=admin_keyboard(product_id, table)
             )
         await state.clear()
     except ValueError:

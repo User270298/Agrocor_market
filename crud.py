@@ -81,7 +81,7 @@ async def add_product_buy(user_id: int, name: str, region: str, district: str, c
 
 
 async def add_product_sell(user_id: int, name: str, region: str, district: str, city: str,
-                           date_at: str, price: int, vat_included: str, other_quality: str) -> int:
+                           date_at: str, price: int, vat_required: str, other_quality: str) -> int:
     async with async_session() as session:
         new_product = ProductSell(
             name=name,
@@ -91,7 +91,7 @@ async def add_product_sell(user_id: int, name: str, region: str, district: str, 
             date_at=date_at,
             price=price,
             status='pending',
-            vat_included=vat_included,
+            vat_required=vat_required,
             other_quality=other_quality,
             user_id=user_id
         )
