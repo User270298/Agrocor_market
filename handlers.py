@@ -2,7 +2,7 @@ import asyncio
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from keyboards import keyboard_start, keyboard_main_menu, back_keyboard, buy_keyboard, create_culture_keyboard, \
     create_regions_keyboard, admin_keyboard, get_price, get_culture_keyboard, get_region_keyboard, contact_trader, \
@@ -560,11 +560,36 @@ class GetProduct(StatesGroup):
 
 @router.callback_query(F.data == 'keyboard_price')
 async def get_culture(callback_query: CallbackQuery, state: FSMContext):
-    # Получаем доступные культуры из базы
-    available_cultures = await get_available_cultures()
+    # Отправляем клавиатуру с выбором типа операции
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text='Купить', callback_data='price_buy'),
+            InlineKeyboardButton(text='Продать', callback_data='price_sell')
+        ],
+        [InlineKeyboardButton(text='🔙Назад', callback_data='main_menu')]
+    ])
+    await callback_query.message.answer(
+        'Выберите тип операции:',
+        reply_markup=keyboard
+    )
+
+
+@router.callback_query(F.data.startswith('price_'))
+async def select_operation_type(callback_query: CallbackQuery, state: FSMContext):
+    operation_type = callback_query.data.split('_')[1]  # buy или sell
+    await state.update_data(operation_type=operation_type)
+    
+    # Получаем доступные культуры из соответствующей таблицы
+    table = 'ProductBuy' if operation_type == 'buy' else 'ProductSell'
+    available_cultures = await get_available_cultures(table)
 
     if not available_cultures:
-        await callback_query.message.answer("Нет доступных культур для выбора.")
+        await callback_query.message.answer(
+            "🚫 Нет доступных культур для выбора в данной категории.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="keyboard_price")]
+            ])
+        )
         return
 
     # Отправляем клавиатуру с культурами
@@ -578,34 +603,42 @@ async def get_culture(callback_query: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("cult_"))
 async def get_region(callback_query: CallbackQuery, state: FSMContext):
     # Получаем выбранную культуру из callback_data
-    culture = callback_query.data.split('_', 1)[1]  # Берем название культуры из callback_data
+    culture = callback_query.data.split('_', 1)[1]
+
+    # Получаем данные из состояния
+    user_data = await state.get_data()
+    operation_type = user_data.get("operation_type", "buy")
+    table = 'ProductBuy' if operation_type == 'buy' else 'ProductSell'
 
     # Сохраняем выбранную культуру в состояние
     await state.update_data(culture=culture)
 
-    # Получаем регионы для выбранной культуры
-    regions = await get_regions_for_culture(culture)
+    # Получаем регионы для выбранной культуры из соответствующей таблицы
+    regions = await get_regions_for_culture(culture, table)
 
     if not regions:  # Если нет доступных регионов
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад к выбору культуры", callback_data="keyboard_price")],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
         ])
+        operation_text = "покупки" if operation_type == "buy" else "продажи"
         await callback_query.message.answer(
-            f"🚫 Для культуры *{culture}* нет доступных регионов. Выберите другой вариант:",
+            f"🚫 Для культуры *{culture}* нет доступных регионов для {operation_text}. Выберите другой вариант:",
             parse_mode="Markdown",
             reply_markup=keyboard
         )
-        return  # Прерываем выполнение функции
+        return
 
     # Если регионы есть, формируем клавиатуру с регионами
-    region_keyboard = await get_region_keyboard(culture)
+    region_keyboard = await get_region_keyboard(culture, table)
 
     # Спрашиваем у пользователя регион
-    await callback_query.message.answer(f"Вы выбрали культуру *{culture}*.\nВыберите регион:",
-                                        parse_mode="Markdown",
-                                        reply_markup=region_keyboard)
+    operation_text = "покупки" if operation_type == "buy" else "продажи"
+    await callback_query.message.answer(
+        f"Вы выбрали культуру *{culture}* для {operation_text}.\nВыберите регион:",
+        parse_mode="Markdown",
+        reply_markup=region_keyboard
+    )
 
     await state.set_state(GetProduct.location)
 
@@ -615,46 +648,38 @@ async def show_prices(callback_query: CallbackQuery, state: FSMContext):
     # Получаем регион из callback_data
     region = callback_query.data.split('_')[1]
 
-    # Получаем данные культуры из состояния
+    # Получаем данные из состояния
     user_data = await state.get_data()
     culture = user_data["culture"]
+    operation_type = user_data.get("operation_type", "buy")
 
-    # Получаем записи из базы данных с фильтром по культуре и региону
-    prices_buy = await get_prices_by_culture_and_region_buy(culture, region)
+    if operation_type == "buy":
+        # Получаем записи о покупке из базы данных
+        prices = await get_prices_by_culture_and_region_buy(culture, region)
+        operation_text = "КУПЛЯ"
+    else:
+        # Получаем записи о продаже из базы данных
+        prices = await get_prices_by_culture_and_region_sell(culture, region)
+        operation_text = "ПРОДАЖА"
 
-    if prices_buy:
-        message_buy = f"📊 *КУПЛЯ*\n🌾Культура: '{culture}'\n📍Регион: '{region}'\n"
-        for price_buy in prices_buy:
-            message_buy += (
+    if prices:
+        message = f"📊 *{operation_text}*\n🌾Культура: '{culture}'\n📍Регион: '{region}'\n"
+        for price in prices:
+            message += (
                 f"----------------\n"
-                f"*На дату {price_buy.date_at.strftime('%d.%m.%Y')}:*\n"
-                f"Цена {"с учетом НДС" if price_buy.vat_required == 'Yes' else 'без учета НДС'}: {price_buy.price} Руб/МТ\n"
-                f"Область: {price_buy.region}\n"
-                f"Район: {price_buy.district}\n"
-                f"Населенный пункт: {price_buy.city}\n"
-                f"Работа с НДС: {'Да' if price_buy.vat_required == 'Yes' else 'Нет'}\n"
-                f"Качественные показатели: {price_buy.other_quality}\n"
+                f"*На дату {price.date_at.strftime('%d.%m.%Y')}:*\n"
+                f"Цена {"с учетом НДС" if price.vat_required == 'Yes' else 'без учета НДС'}: {price.price} Руб/МТ\n"
+                f"Область: {price.region}\n"
+                f"Район: {price.district}\n"
+                f"Населенный пункт: {price.city}\n"
+                f"Работа с НДС: {'Да' if price.vat_required == 'Yes' else 'Нет'}\n"
+                f"Качественные показатели: {price.other_quality}\n"
                 f"----------------\n\n"
             )
-
-        await callback_query.message.answer(message_buy, parse_mode="Markdown", reply_markup=contact_trader())
-
-    # Аналогично для ПРОДАЖИ
-    prices_sell = await get_prices_by_culture_and_region_sell(culture, region)
-
-    if prices_sell:
-        message_sell = f"📊 *ПРОДАЖА*\n🌾Культура: '{culture}'\n📍Регион: '{region}'\n"
-        for price_sell in prices_sell:
-            message_sell += (
-                f"----------------\n"
-                f"*На дату {price_sell.date_at.strftime('%d.%m.%Y')}:*\n"
-                f"Цена {"с учетом НДС" if price_sell.vat_required == 'Yes' else 'без учета НДС'}: {price_sell.price} Руб/МТ\n"
-                f"Область: {price_sell.region}\n"
-                f"Район: {price_sell.district}\n"
-                f"Населенный пункт: {price_sell.city}\n"
-                f"Работа с НДС: {'Да' if price_sell.vat_included == 'Yes' else 'Нет'}\n"
-                f"Качественные показатели: {price_sell.other_quality}\n"
-                f"----------------\n\n"
-            )
-
-        await callback_query.message.answer(message_sell, parse_mode="Markdown", reply_markup=contact_trader())
+        await callback_query.message.answer(message, parse_mode="Markdown", reply_markup=contact_trader())
+    else:
+        operation_text_lower = "покупку" if operation_type == "buy" else "продажу"
+        await callback_query.message.answer(
+            f"По вашему запросу заявок на {operation_text_lower} не найдено.", 
+            reply_markup=contact_trader()
+        )

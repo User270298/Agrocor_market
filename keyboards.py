@@ -115,9 +115,16 @@ def get_culture_keyboard(cultures):
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
 
-async def get_region_keyboard(culture: str):
-    # Получаем регионы для культуры из базы данных
-    regions = await get_regions_for_culture(culture)
+async def get_region_keyboard(culture: str, table: str = None):
+    # Получаем регионы для культуры из базы данных с учетом таблицы
+    regions = await get_regions_for_culture(culture, table)
+
+    if not regions:
+        # Если регионов нет, возвращаем клавиатуру только с кнопкой возврата
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="keyboard_price")],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ])
 
     # Разбиваем список регионов на строки по 3 элемента
     rows = [regions[i:i + 3] for i in range(0, len(regions), 3)]
@@ -128,8 +135,11 @@ async def get_region_keyboard(culture: str):
         for row in rows
     ]
 
-    # Добавляем кнопку возврата в начальное меню
-    keyboard_buttons.append([InlineKeyboardButton(text="Главное меню", callback_data="main_menu")])
+    # Добавляем кнопки навигации
+    keyboard_buttons.append([
+        InlineKeyboardButton(text="🔙 Назад", callback_data="keyboard_price"),
+        InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")
+    ])
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 

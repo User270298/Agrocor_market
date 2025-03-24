@@ -110,7 +110,7 @@ async def get_product(product_id: int, table: str):
         return product
 
 
-async def update_status_product(id: int, status: str, table: Base):
+async def update_status_product(id: int, status: str, table):
     async with async_session() as session:
         model = ProductBuy if table == 'ProductBuy' else ProductSell
         update_status = update(model).where(model.id == id).values(status=status)
@@ -191,50 +191,72 @@ async def get_statistics():
         return total_users, total_buy_requests, total_sell_requests, active_users, subscribed_users
 
 
-async def get_regions_for_culture(culture: str):
+async def get_regions_for_culture(culture: str, table: str = None):
+    """Получает регионы для выбранной культуры из указанной таблицы или обеих таблиц"""
     async with async_session() as session:
-        # Запрос на получение регионов для выбранной культуры из таблиц ProductBuy и ProductSell с фильтром по статусу "approved"
+        if table == 'ProductBuy':
+            result = await session.execute(
+                select(distinct(ProductBuy.region)).where(
+                    ProductBuy.name == culture,
+                    ProductBuy.status == 'approved'
+                )
+            )
+            return result.scalars().all()
+        elif table == 'ProductSell':
+            result = await session.execute(
+                select(distinct(ProductSell.region)).where(
+                    ProductSell.name == culture,
+                    ProductSell.status == 'approved'
+                )
+            )
+            return result.scalars().all()
+        else:
+            # Если таблица не указана, получаем из обеих таблиц
+            buy_query = select(ProductBuy.region).where(
+                ProductBuy.name == culture,
+                ProductBuy.status == 'approved'
+            )
 
-        # Для ProductBuy
-        buy_query = select(ProductBuy.region).where(
-            ProductBuy.name == culture,  # Название культуры
-            ProductBuy.status == 'approved'  # Статус должен быть "approved"
-        )
+            sell_query = select(ProductSell.region).where(
+                ProductSell.name == culture,
+                ProductSell.status == 'approved'
+            )
 
-        # Для ProductSell
-        sell_query = select(ProductSell.region).where(
-            ProductSell.name == culture,  # Название культуры
-            ProductSell.status == 'approved'  # Статус должен быть "approved"
-        )
+            result = await session.execute(
+                buy_query.union(sell_query)
+            )
 
-        # Выполним оба запроса и объединяем их
-        result = await session.execute(
-            buy_query.union(sell_query)
-        )
-
-        # Извлекаем и возвращаем список регионов
-        regions = result.scalars().all()
-    return regions
+            return result.scalars().all()
 
 
-async def get_available_cultures():
-    """Получает уникальные культуры из таблиц ProductBuy и ProductSell"""
+async def get_available_cultures(table: str = None):
+    """Получает уникальные культуры из указанной таблицы или обеих таблиц"""
     async with async_session() as session:
-        # Получаем уникальные культуры из обеих таблиц
-        result = await session.execute(
-            select(distinct(ProductBuy.name)).where(ProductBuy.status == "approved")
-        )
-        cultures_buy = result.scalars().all()
+        if table == 'ProductBuy':
+            result = await session.execute(
+                select(distinct(ProductBuy.name)).where(ProductBuy.status == "approved")
+            )
+            return result.scalars().all()
+        elif table == 'ProductSell':
+            result = await session.execute(
+                select(distinct(ProductSell.name)).where(ProductSell.status == "approved")
+            )
+            return result.scalars().all()
+        else:
+            # Если таблица не указана, получаем из обеих таблиц
+            result = await session.execute(
+                select(distinct(ProductBuy.name)).where(ProductBuy.status == "approved")
+            )
+            cultures_buy = result.scalars().all()
 
-        result = await session.execute(
-            select(distinct(ProductSell.name)).where(ProductSell.status == "approved")
-        )
-        cultures_sell = result.scalars().all()
+            result = await session.execute(
+                select(distinct(ProductSell.name)).where(ProductSell.status == "approved")
+            )
+            cultures_sell = result.scalars().all()
 
-        # Объединяем списки и убираем дубликаты
-        unique_cultures = list(set(cultures_buy + cultures_sell))
-
-    return unique_cultures
+            # Объединяем списки и убираем дубликаты
+            unique_cultures = list(set(cultures_buy + cultures_sell))
+            return unique_cultures
 
 
 async def get_cities_by_district(district: str):
