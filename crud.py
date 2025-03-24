@@ -7,6 +7,7 @@ from sqlalchemy import update, union
 from sqlalchemy.sql import func
 from sqlalchemy import distinct
 
+
 async def init_db():
     try:
         async with engine.begin() as conn:
@@ -58,8 +59,8 @@ async def get_user_telegram_id_by_product_id(product_id: int, table: str) -> int
         return None
 
 
-async def add_product_buy(user_id: int, name: str, region: str, district: str, city: str, 
-                         date_at: str, price: int, vat_required: str, other_quality: str) -> int:
+async def add_product_buy(user_id: int, name: str, region: str, district: str, city: str,
+                          date_at: str, price: int, vat_required: str, other_quality: str) -> int:
     async with async_session() as session:
         new_product = ProductBuy(
             name=name,
@@ -80,7 +81,7 @@ async def add_product_buy(user_id: int, name: str, region: str, district: str, c
 
 
 async def add_product_sell(user_id: int, name: str, region: str, district: str, city: str,
-                          date_at: str, price: int, vat_included: str, other_quality:str) -> int:
+                           date_at: str, price: int, vat_included: str, other_quality: str) -> int:
     async with async_session() as session:
         new_product = ProductSell(
             name=name,
@@ -94,9 +95,7 @@ async def add_product_sell(user_id: int, name: str, region: str, district: str, 
             other_quality=other_quality,
             user_id=user_id
         )
-        
-        
-        
+
         session.add(new_product)
         await session.commit()
         await session.refresh(new_product)
@@ -161,12 +160,11 @@ async def get_subscribed_users():
 async def get_statistics():
     async with async_session() as session:
         # Подсчитываем общее количество пользователей
-        query = select(func.count(Users))
+        query = select(func.count(Users.id))
         # Выполняем запрос
         result = await session.execute(query)
         # Извлекаем результат (количество строк)
         total_users = result.scalar()
-
 
         # Подсчитываем количество заявок на покупку со статусом "approved"
         total_buy_requests_query = select(func.count(ProductBuy.id)).where(ProductBuy.status == "approved")
@@ -218,6 +216,7 @@ async def get_regions_for_culture(culture: str):
         regions = result.scalars().all()
     return regions
 
+
 async def get_available_cultures():
     """Получает уникальные культуры из таблиц ProductBuy и ProductSell"""
     async with async_session() as session:
@@ -237,6 +236,7 @@ async def get_available_cultures():
 
     return unique_cultures
 
+
 async def get_cities_by_district(district: str):
     """Получает список населенных пунктов в указанном районе"""
     async with async_session() as session:
@@ -245,18 +245,18 @@ async def get_cities_by_district(district: str):
             ProductBuy.district == district,
             ProductBuy.status == 'approved'
         )
-        
+
         # Поиск в таблице продаж
         sell_query = select(distinct(ProductSell.city)).where(
             ProductSell.district == district,
             ProductSell.status == 'approved'
         )
-        
+
         # Объединяем результаты
         result = await session.execute(
             buy_query.union(sell_query)
         )
-        
+
         return result.scalars().all()
 
 
@@ -268,38 +268,96 @@ async def get_districts_by_region(region: str):
             ProductBuy.region == region,
             ProductBuy.status == 'approved'
         )
-        
+
         # Поиск в таблице продаж
         sell_query = select(distinct(ProductSell.district)).where(
             ProductSell.region == region,
             ProductSell.status == 'approved'
         )
-        
+
         # Объединяем результаты
         result = await session.execute(
             buy_query.union(sell_query)
         )
-        
+
         return result.scalars().all()
+
 
 async def get_unique_regions():
     """Получает уникальные регионы из таблиц ProductBuy и ProductSell."""
     async with async_session() as session:
-        # Запрос для получения уникальных регионов из таблицы ProductBuy
-        buy_query = select(distinct(ProductBuy.region)).where(
-            ProductBuy.status == 'approved'  # Фильтр по статусу "approved"
+        # Подсчет количества записей для каждого региона в таблице ProductBuy
+        buy_query = (
+            select(ProductBuy.region, func.count(ProductBuy.id).label('count'))
+            .where(ProductBuy.status == 'approved')  # Фильтр по статусу "approved"
+            .group_by(ProductBuy.region)
         )
 
-        # Запрос для получения уникальных регионов из таблицы ProductSell
-        sell_query = select(distinct(ProductSell.region)).where(
-            ProductSell.status == 'approved'  # Фильтр по статусу "approved"
+        # Подсчет количества записей для каждого региона в таблице ProductSell
+        sell_query = (
+            select(ProductSell.region, func.count(ProductSell.id).label('count'))
+            .where(ProductSell.status == 'approved')  # Фильтр по статусу "approved"
+            .group_by(ProductSell.region)
         )
 
         # Объединяем результаты двух запросов
-        result = await session.execute(
-            buy_query.union(sell_query)
+        union_query = buy_query.union_all(sell_query).subquery()
+
+        # Группируем по регионам и суммируем количество записей
+        final_query = (
+            select(union_query.c.region, func.sum(union_query.c.count).label('total_count'))
+            .group_by(union_query.c.region)
+            .order_by(func.sum(union_query.c.count).desc())  # Сортировка по убыванию популярности
+            .limit(10)  # Ограничиваем результат 10 регионами
         )
 
-        # Извлекаем и возвращаем список уникальных регионов
+        # Выполняем запрос
+        result = await session.execute(final_query)
+
+        # Извлекаем и возвращаем список регионов
         regions = result.scalars().all()
         return regions
+
+
+async def get_approved_products():
+    async with async_session() as session:
+        # Получаем записи из таблицы ProductBuy со статусом "approved"
+        product_buy_results = await session.execute(
+            select(ProductBuy).where(ProductBuy.status == 'approved')
+        )
+        product_buy_results = product_buy_results.scalars().all()  # Получаем объекты, а не их ID
+
+        # Получаем записи из таблицы ProductSell со статусом "approved"
+        product_sell_results = await session.execute(
+            select(ProductSell).where(ProductSell.status == 'approved')
+        )
+        product_sell_results = product_sell_results.scalars().all()  # Получаем объекты, а не их ID
+
+        # Возвращаем результаты
+        return product_buy_results, product_sell_results
+
+
+async def update_post_status(post_type, post_id, new_status="access"):
+    async with async_session() as session:
+        if post_type == 'buy':
+            # Получаем объект ProductBuy, а не его ID
+            product = await session.execute(
+                select(ProductBuy).where(ProductBuy.id == post_id)
+            )
+            product = product.scalars().first()  # Получаем первый объект (или None, если не найдено)
+            if product:
+                product.status = new_status  # Изменяем статус
+
+        elif post_type == 'sell':
+            # Получаем объект ProductSell, а не его ID
+            product = await session.execute(
+                select(ProductSell).where(ProductSell.id == post_id)
+            )
+            product = product.scalars().first()  # Получаем первый объект (или None, если не найдено)
+            if product:
+                product.status = new_status  # Изменяем статус
+
+        # Сохраняем изменения в базе данных
+        if product:
+            await session.commit()  # Сохраняем изменения, если объект найден и статус обновлен
+

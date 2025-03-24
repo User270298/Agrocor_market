@@ -6,11 +6,11 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import Command
 from keyboards import keyboard_start, keyboard_main_menu, back_keyboard, buy_keyboard, create_culture_keyboard, \
     create_regions_keyboard, admin_keyboard, get_price, get_culture_keyboard, get_region_keyboard, contact_trader, \
-    subscription_keyboard, create_vat_keyboard, change_region_keyboard
+    subscription_keyboard, create_vat_keyboard, change_region_keyboard, create_finish_button
 from crud import add_user, get_users_telegram_ids, add_product_buy, add_product_sell, update_status_product, \
     get_user_id_by_telegram_id, get_user_telegram_id_by_product_id, get_prices_by_culture_and_region_buy, \
     get_prices_by_culture_and_region_sell, subscribe_decision, get_subscribed_users, get_product, get_statistics, \
-    get_regions_for_culture, get_available_cultures, get_unique_regions
+    get_regions_for_culture, get_available_cultures, get_unique_regions, get_approved_products, update_post_status
 from config import CULTURES, REGIONS, ADMIN_ID
 from datetime import datetime, date
 from aiocache import cached
@@ -29,14 +29,14 @@ async def get_cached_statistics():
 
 
 async def main_menu():
-    total_buy_requests, total_sell_requests, total_users, active_users, subscribed_users = await get_cached_statistics()
+    total_users, total_buy_requests, total_sell_requests, active_users, subscribed_users = await get_cached_statistics()
     text = f'''Главное меню *AGROCOR Market* 🌾
 📊*Заявок в боте на сегодня:*
 ✅ на покупку: {total_buy_requests}
 ✅ на продажу: {total_sell_requests}
 
 *Количество пользователей:*
-➡️ Зарегистрировано: {total_users + 1}
+➡️ Зарегистрировано: {total_users}
 ➡️ Выставляют заявки: {active_users}
 ➡️ Наблюдают за ценами: {subscribed_users}'''
     return text
@@ -97,12 +97,74 @@ async def handle_name(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == 'instruction')
 async def handle_instruction(callback_query: CallbackQuery):
+    telegram_id = callback_query.from_user.id
+    if telegram_id in ADMIN_ID:
+        product_buy_results, product_sell_results = await get_approved_products()
+
+
+        # Пройдёмся по записям на покупку
+        for product in product_buy_results:
+            message = (f"*ПОКУПКА*\n"
+                       f"🌾 *Культура:* {product.name}\n"
+                        f"📍 *Регион:* {product.region}, {product.district}, {product.city}\n"
+                        f"📅 *Дата:* {product.date_at.strftime('%d.%m.%Y')}\n"
+                        f"💰 *Цена:* {product.price} Руб/МТ")
+            # Создаем кнопку для завершения
+            await callback_query.message.answer(
+                message,
+                parse_mode='Markdown',
+                reply_markup=create_finish_button('buy', product.id)
+            )
+
+        # Пройдёмся по записям на продажу
+        for product in product_sell_results:
+            message = (f"*ПРОДАЖА*\n"
+                       f"🌾 *Культура:* {product.name}\n"
+                        f"📍 *Регион:* {product.region}, {product.district}, {product.city}\n"
+                        f"📅 *Дата:* {product.date_at.strftime('%d.%m.%Y')}\n"
+                        f"💰 *Цена:* {product.price} Руб/МТ")
+            # Создаем кнопку для завершения
+            await callback_query.message.answer(
+                message,
+                parse_mode='Markdown',
+                reply_markup=create_finish_button('sell', product.id)
+            )
+        return
     await callback_query.message.answer('''
 По любым вопросам обращайтесь к администратору бота:
 
 ☎️ +79056440180
 
 *Рабочее время:* с 10:00 до 18:00''', parse_mode='Markdown', reply_markup=back_keyboard())
+
+
+@router.callback_query(F.data.startswith("finish_"))
+async def finish_post(callback_query: CallbackQuery):
+    # Разбираем callback_data, чтобы получить информацию о записи
+    callback_data = callback_query.data.split("_")
+    post_type = callback_data[1]  # Тип поста ('buy' или 'sell')
+    post_id = int(callback_data[2])  # ID записи
+    table = 'ProductBuy' if post_type == 'buy' else 'ProductSell'
+    # Обновляем статус записи на "access"
+    await update_post_status(post_type, post_id)
+    subscribed_users = await get_subscribed_users()
+    product = await get_product(post_id, table)
+    if product:
+        post_message = (
+            f"📢 *ПРОДАНО!*\n\n"
+            f"🌾 *Культура:* {product.name}\n"
+            f"📍 *Регион:* {product.region}, {product.district}, {product.city}\n"
+            f"📅 *Дата:* {product.date_at.strftime('%d.%m.%Y')}\n"
+            f"💰 *Цена:* {product.price} Руб/МТ"
+        )
+        for subscriber in subscribed_users:
+            await callback_query.bot.send_message(
+                chat_id=subscriber,
+                text=post_message,
+                parse_mode="Markdown"
+            )
+    # Отправляем сообщение об успешном завершении
+    await callback_query.answer("Запись завершена и изменен статус на 'access'.")
 
 
 @router.callback_query(F.data == 'urls')
@@ -225,19 +287,18 @@ async def culture(callback_query: CallbackQuery, state: FSMContext):
     culture_index = int(callback_query.data.split('_')[1])
     culture = CULTURES[culture_index]
     await state.update_data(name=culture)
-    data = await state.get_data()
-    if data['action'] == 'sellers':
-        await callback_query.message.answer(f"Вы выбрали: *{culture}*.\nУкажите область:", parse_mode='Markdown',
-                                            reply_markup=create_regions_keyboard(REGIONS))
-    else:
-        await callback_query.message.answer(f"Вы выбрали: *{culture}*.\nВыберите формат отображения регионов:", parse_mode='Markdown',
-                                            reply_markup=change_region_keyboard())
+    await callback_query.message.answer(
+        f"Вы выбрали: *{culture}*.\nВыберите формат отображения регионов:\n\nОбращаем ваше внимание на то, что список актуальных регионов формируется в реальном времени и может быть дополнен позже._",
+        parse_mode='Markdown',
+        reply_markup=change_region_keyboard())
+
 
 @router.callback_query(F.data.startswith('actual'))
 async def actual_region(callback_query: CallbackQuery, state: FSMContext):
     regions = await get_unique_regions()
     await callback_query.message.answer(f"Укажите область:", parse_mode='Markdown',
                                         reply_markup=create_regions_keyboard(regions))
+
 
 @router.callback_query(F.data.startswith('all_region'))
 async def actual_region(callback_query: CallbackQuery, state: FSMContext):
@@ -376,18 +437,25 @@ async def admin_approved(callback_query: CallbackQuery, state: FSMContext):
     subscribed_users = await get_subscribed_users()
     product = await get_product(product_id, table)
     if product:
+        # Подготавливаем переменные для форматирования
+        category_text = 'Купля' if table == 'ProductBuy' else 'Продажа'
+        vat_text = 'Да' if product.vat_required == 'Yes' else 'Нет'
+        price_text = 'Цена с учетом НДС' if product.vat_required == 'Yes' else 'Цена без учета НДС'
+        date_text = product.date_at.strftime('%d.%m.%Y')
+        
         post_message = (
             f"📢 *Новый пост!*\n\n"
-            f"🔎 *Категория:* {'Купля' if table == 'ProductBuy' else 'Продажа'}"
+            f"🔎 *Категория:* {category_text}\n"
             f"🌾 *Культура:* {product.name}\n"
             f"📍 *Регион:* {product.region}\n"
             f"📍 *Район:* {product.district}\n"
-            f"📍 *Населенный пункт:* {product.city}"
+            f"📍 *Населенный пункт:* {product.city}\n"
             f"📄 *Качественные показатели:* {product.other_quality}\n"
-            f"📅 *Дата:* {product.date_at.strftime('%d.%m.%Y')}\n"
-            f"💰 *НДС:* {'Да' if product.vat_required == 'Yes' else 'Нет'}\n"
-            f"💰 *{'Цена с учетом НДС' if product.vat_required == 'Yes' else 'Цена без учета НДС'}:* {product.price} Руб/МТ"
+            f"📅 *Дата:* {date_text}\n"
+            f"💰 *НДС:* {vat_text}\n"
+            f"💰 *{price_text}:* {product.price} Руб/МТ"
         )
+        
         for subscriber in subscribed_users:
             if subscriber != user_telegram_id:  # Исключаем владельца поста из рассылки
                 await callback_query.bot.send_message(
@@ -410,7 +478,63 @@ async def admin_approved(callback_query: CallbackQuery, state: FSMContext):
             chat_id=user_telegram_id,
             text=f"Ваш пост был отклонён администратором. ❌"
         )
-    await callback_query.answer("Пост подтверждён.")
+    await callback_query.answer("Пост отклонен.")
+
+
+@router.callback_query(F.data.startswith('close_'))
+async def admin_close_product(callback_query: CallbackQuery, state: FSMContext):
+    product_id = int(callback_query.data.split('_')[1])
+    table = callback_query.data.split('_')[2]
+    await update_status_product(product_id, 'closed', table)
+    
+    # Получаем информацию о продукте
+    product = await get_product(product_id, table)
+    
+    # Получаем telegram_id владельца заявки
+    user_telegram_id = await get_user_telegram_id_by_product_id(product_id, table)
+    
+    if user_telegram_id and product:
+        # Отправляем сообщение владельцу заявки
+        await callback_query.bot.send_message(
+            chat_id=user_telegram_id,
+            text=f"Ваша заявка была закрыта администратором (товар продан). 🎉"
+        )
+    
+    # Получаем всех подписанных пользователей для рассылки
+    subscribed_users = await get_subscribed_users()
+    
+    if product:
+        # Формируем сообщение о закрытии заявки с правильным форматированием Markdown
+        category_text = 'Купля' if table == 'ProductBuy' else 'Продажа'
+        vat_text = 'Да' if product.vat_required == 'Yes' else 'Нет'
+        price_text = 'Цена с учетом НДС' if product.vat_required == 'Yes' else 'Цена без учета НДС'
+        date_text = product.date_at.strftime('%d.%m.%Y')
+        
+        post_message = (
+            f"📢 *ПРОДАНО!*\n\n"
+            f"🔎 *Категория:* {category_text}\n"
+            f"🌾 *Культура:* {product.name}\n"
+            f"📍 *Регион:* {product.region}\n"
+            f"📍 *Район:* {product.district}\n"
+            f"📍 *Населенный пункт:* {product.city}\n"
+            f"📄 *Качественные показатели:* {product.other_quality}\n"
+            f"📅 *Дата:* {date_text}\n"
+            f"💰 *НДС:* {vat_text}\n"
+            f"💰 *{price_text}:* {product.price} Руб/МТ"
+        )
+        
+        # Рассылаем уведомление всем подписанным пользователям
+        for subscriber in subscribed_users:
+            try:
+                await callback_query.bot.send_message(
+                    chat_id=subscriber,
+                    text=post_message,
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                print(f"Ошибка при отправке уведомления пользователю {subscriber}: {e}")
+    
+    await callback_query.answer("Заявка закрыта и помечена как 'Продано'.")
 
 
 @router.callback_query(F.data == 'prices')

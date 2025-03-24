@@ -85,6 +85,11 @@ def admin_keyboard(product_id: int, table_name: str):
             InlineKeyboardButton(
                 text='Отклонить', callback_data=f'cancel_{product_id}_{table_name}'
             )
+        ],
+        [
+            InlineKeyboardButton(
+                text='Закрыть (Продано)', callback_data=f'close_{product_id}_{table_name}'
+            )
         ]
     ])
     return keyboard
@@ -129,7 +134,6 @@ async def get_region_keyboard(culture: str):
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
 
-
 def contact_trader():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Связаться с трейдером", url="https://wa.me/+79094213334")],
@@ -158,6 +162,7 @@ def create_vat_keyboard():
     )
     return keyboard
 
+
 def change_region_keyboard():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -167,3 +172,18 @@ def change_region_keyboard():
     )
     return keyboard
 
+
+# Кнопка для завершения
+def create_finish_button(post_type, post_id):
+    """
+    Создает кнопку 'Завершить' для каждого поста (покупки или продажи)
+    :param post_id: ID записи
+    :param post_type: Тип записи ('buy' или 'sell')
+    :return: InlineKeyboardMarkup с кнопкой
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="Завершить",
+            callback_data=f"finish_{post_type}_{post_id}"
+        )]]
+    )
