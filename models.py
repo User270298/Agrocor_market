@@ -25,6 +25,7 @@ class ProductBuy(Base):
     district = Column(String, index=True)  # район
     city = Column(String, index=True)  # населенный пункт
     date_at = Column(DateTime, index=True)
+    volume = Column(Integer, index=True)
     price = Column(Integer)
     status = Column(String, index=True)
     vat_required = Column(String, default='No', index=True)  # работа с НДС
@@ -43,6 +44,7 @@ class ProductSell(Base):
     district = Column(String, index=True)  # район
     city = Column(String, index=True)  # населенный пункт
     date_at = Column(DateTime, index=True)
+    volume = Column(Integer, index=True)
     price = Column(Integer)
     status = Column(String, index=True)
     vat_required = Column(String, default='No', index=True)  # работа с НДС
@@ -50,3 +52,15 @@ class ProductSell(Base):
 
     user_id = Column(Integer, ForeignKey('users.id'), index=True)
     user = relationship('Users', back_populates='products_sell')
+
+
+# from sqlalchemy import create_engine, text
+
+# # Подключение к базе данных
+# engine = create_engine('sqlite:///agrocor.db')
+
+# # Добавление столбца
+# with engine.connect() as conn:
+#     conn.execute(text("ALTER TABLE product_buy ADD COLUMN volume INTEGER"))
+#     conn.execute(text("ALTER TABLE product_sell ADD COLUMN volume INTEGER"))
+#     conn.commit()

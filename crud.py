@@ -60,7 +60,7 @@ async def get_user_telegram_id_by_product_id(product_id: int, table: str) -> int
 
 
 async def add_product_buy(user_id: int, name: str, region: str, district: str, city: str,
-                          date_at: str, price: int, vat_required: str, other_quality: str) -> int:
+                          date_at: str, volume:int, price: int, vat_required: str, other_quality: str) -> int:
     async with async_session() as session:
         new_product = ProductBuy(
             name=name,
@@ -69,6 +69,7 @@ async def add_product_buy(user_id: int, name: str, region: str, district: str, c
             city=city,
             date_at=date_at,
             price=price,
+            volume=volume,
             status='pending',
             vat_required=vat_required,
             other_quality=other_quality,
@@ -81,7 +82,7 @@ async def add_product_buy(user_id: int, name: str, region: str, district: str, c
 
 
 async def add_product_sell(user_id: int, name: str, region: str, district: str, city: str,
-                           date_at: str, price: int, vat_required: str, other_quality: str) -> int:
+                           date_at: str, volume:int, price: int, vat_required: str, other_quality: str) -> int:
     async with async_session() as session:
         new_product = ProductSell(
             name=name,
@@ -89,6 +90,7 @@ async def add_product_sell(user_id: int, name: str, region: str, district: str, 
             district=district,
             city=city,
             date_at=date_at,
+            volume=volume,
             price=price,
             status='pending',
             vat_required=vat_required,

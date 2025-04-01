@@ -263,6 +263,7 @@ class AddBuySell(StatesGroup):
     vat_required = State()
     other_quality = State()
     date_at = State()
+    volume = State()
     price = State()
 
 
@@ -366,18 +367,34 @@ async def input_date_at(message: Message, state: FSMContext):
         # Проверяем, что введенная дата не раньше сегодняшнего дня
         if date_at < today:
             await message.answer(
-                "Дата не может быть раньше сегодняшнего дня. Введите дату заново в формате ЧЧ.ММ.ГГГГ.")
-        else:
-            # Сохраняем дату в состоянии
-            await state.update_data(date_at=date_at)
-            user_data = await state.get_data()
-            text = "Введите цену с учетом НДС (только число, в Руб/МТ):" if user_data[
-                                                                                'vat_required'] == 'Yes' else 'Введите цену без учета НДС(только число, в Руб/МТ):'
-            await message.answer(text)
-            await state.set_state(AddBuySell.price)
+                "Дата не может быть раньше сегодняшнего дня. Введите дату заново в формате ДД.ММ.ГГГГ.")
+            return  # Оставляем пользователя в том же состоянии
+
+        # Сохраняем дату в состоянии
+        await state.update_data(date_at=date_at)
+        await message.answer("Введите объем (только число, в МТ):")
+        await state.set_state(AddBuySell.volume)
 
     except ValueError:
-        await message.answer("Неверный формат даты. Введите в формате ЧЧ.ММ.ГГГГ.")
+        await message.answer("Неверный формат даты. Введите в формате ДД.ММ.ГГГГ.")
+
+
+@router.message(AddBuySell.volume)
+async def input_volume(message: Message, state: FSMContext):
+    try:
+        volume = int(message.text)
+        if volume <= 0:
+            await message.answer("Объем должен быть положительным числом. Введите объем заново:")
+            return
+
+        await state.update_data(volume=volume)
+        user_data = await state.get_data()
+        text = "Введите цену с учетом НДС (только число, в Руб/МТ):" if user_data['vat_required'] == 'Yes' else 'Введите цену без учета НДС (только число, в Руб/МТ):'
+        await message.answer(text)
+        await state.set_state(AddBuySell.price)
+
+    except ValueError:
+        await message.answer("Пожалуйста, введите корректное число для объема (в МТ):")
 
 
 @router.message(AddBuySell.price)
@@ -394,6 +411,7 @@ async def input_price_buy(message: Message, state: FSMContext):
                 district=user_data['district'],
                 city=user_data['city'],
                 date_at=user_data['date_at'],
+                volume=user_data['volume'],
                 price=price,
                 vat_required=user_data['vat_required'],
                 other_quality=user_data['other_quality'],
@@ -406,6 +424,7 @@ async def input_price_buy(message: Message, state: FSMContext):
                 district=user_data['district'],
                 city=user_data['city'],
                 date_at=user_data['date_at'],
+                volume=user_data['volume'],
                 price=price,
                 vat_required=user_data['vat_required'],
                 other_quality=user_data['other_quality'],
@@ -431,6 +450,7 @@ async def input_price_buy(message: Message, state: FSMContext):
 📄Качественные показатели: {user_data['other_quality']}
 --------------
 На дату: {user_data["date_at"].strftime("%d.%m.%Y")}
+Объем: {user_data['volume']} МТ
 {'Цена с учетом НДС' if user_data['vat_required'] == 'Yes' else 'Цена без учета НДС'}: {price} Руб/МТ
 ''',
                 parse_mode='Markdown',
@@ -474,6 +494,7 @@ async def admin_approved(callback_query: CallbackQuery, state: FSMContext):
             f"📄 *Качественные показатели:* {product.other_quality}\n"
             f"📅 *Дата:* {date_text}\n"
             f"💰 *НДС:* {vat_text}\n"
+            f"💰 *Объем:* {product.volume} МТ\n"
             f"💰 *{price_text}:* {product.price} Руб/МТ"
         )
         
@@ -541,6 +562,7 @@ async def admin_close_product(callback_query: CallbackQuery, state: FSMContext):
             f"📄 *Качественные показатели:* {product.other_quality}\n"
             f"📅 *Дата:* {date_text}\n"
             f"💰 *НДС:* {vat_text}\n"
+            f"💰 *Объем:* {product.volume} МТ\n"
             f"💰 *{price_text}:* {product.price} Руб/МТ"
         )
         
@@ -689,6 +711,7 @@ async def show_prices(callback_query: CallbackQuery, state: FSMContext):
             message += (
                 f"----------------\n"
                 f"*На дату {price.date_at.strftime('%d.%m.%Y')}:*\n"
+                f"Объем: {price.volume} МТ\n"
                 f"Цена {"с учетом НДС" if price.vat_required == 'Yes' else 'без учета НДС'}: {price.price} Руб/МТ\n"
                 f"Область: {price.region}\n"
                 f"Район: {price.district}\n"

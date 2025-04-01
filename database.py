@@ -29,7 +29,13 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine
 import os
+
+# Для миграций используем синхронный движок
+SYNC_DATABASE_URL = "sqlite:///./agrocor.db"
+sync_engine = create_engine(SYNC_DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
 
 Base = declarative_base()
 

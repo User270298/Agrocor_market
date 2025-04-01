@@ -20,8 +20,8 @@ def keyboard_start():
 def keyboard_main_menu():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text='📊Аналитика', callback_data='analytics'),
-         InlineKeyboardButton(text='💵Спрос и предложения', callback_data='prices')],
-        [InlineKeyboardButton(text='🛒Купить/Продать', callback_data='buy'),
+         InlineKeyboardButton(text='💵Актуальные заявки', callback_data='prices')],
+        [InlineKeyboardButton(text='🛒Заполнить заявку', callback_data='buy'),
          InlineKeyboardButton(text='📋Подписка', callback_data='subscription')],
         [InlineKeyboardButton(text='⚙️Инструкция', callback_data='instruction'),
          InlineKeyboardButton(text='🔗Ссылки на источники', callback_data='urls')]
