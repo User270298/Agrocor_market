@@ -107,6 +107,7 @@ async def handle_instruction(callback_query: CallbackQuery):
             message = (f"*ПОКУПКА*\n"
                        f"🌾 *Культура:* {product.name}\n"
                         f"📍 *Регион:* {product.region}, {product.district}, {product.city}\n"
+                        f"📄 *Объем:* {product.volume} МТ\n"
                         f"📅 *Дата:* {product.date_at.strftime('%d.%m.%Y')}\n"
                         f"💰 *Цена:* {product.price} Руб/МТ")
             # Создаем кнопку для завершения
@@ -121,6 +122,7 @@ async def handle_instruction(callback_query: CallbackQuery):
             message = (f"*ПРОДАЖА*\n"
                        f"🌾 *Культура:* {product.name}\n"
                         f"📍 *Регион:* {product.region}, {product.district}, {product.city}\n"
+                        f"📄 *Объем:* {product.volume} МТ\n"
                         f"📅 *Дата:* {product.date_at.strftime('%d.%m.%Y')}\n"
                         f"💰 *Цена:* {product.price} Руб/МТ")
             # Создаем кнопку для завершения
@@ -155,6 +157,7 @@ async def finish_post(callback_query: CallbackQuery):
             f"🌾 *Культура:* {product.name}\n"
             f"📍 *Регион:* {product.region}, {product.district}, {product.city}\n"
             f"📅 *Дата:* {product.date_at.strftime('%d.%m.%Y')}\n"
+            f"📄 *Объем партии:* {product.volume} МТ\n"
             f"💰 *Цена:* {product.price} Руб/МТ"
         )
         for subscriber in subscribed_users:
@@ -450,7 +453,7 @@ async def input_price_buy(message: Message, state: FSMContext):
 📄Качественные показатели: {user_data['other_quality']}
 --------------
 На дату: {user_data["date_at"].strftime("%d.%m.%Y")}
-Объем: {user_data['volume']} МТ
+Объем партии: {user_data['volume']} МТ
 {'Цена с учетом НДС' if user_data['vat_required'] == 'Yes' else 'Цена без учета НДС'}: {price} Руб/МТ
 ''',
                 parse_mode='Markdown',
@@ -494,7 +497,7 @@ async def admin_approved(callback_query: CallbackQuery, state: FSMContext):
             f"📄 *Качественные показатели:* {product.other_quality}\n"
             f"📅 *Дата:* {date_text}\n"
             f"💰 *НДС:* {vat_text}\n"
-            f"💰 *Объем:* {product.volume} МТ\n"
+            f"💰 *Объем партии:* {product.volume} МТ\n"
             f"💰 *{price_text}:* {product.price} Руб/МТ"
         )
         
@@ -562,7 +565,7 @@ async def admin_close_product(callback_query: CallbackQuery, state: FSMContext):
             f"📄 *Качественные показатели:* {product.other_quality}\n"
             f"📅 *Дата:* {date_text}\n"
             f"💰 *НДС:* {vat_text}\n"
-            f"💰 *Объем:* {product.volume} МТ\n"
+            f"💰 *Объем партии:* {product.volume} МТ\n"
             f"💰 *{price_text}:* {product.price} Руб/МТ"
         )
         
@@ -711,7 +714,7 @@ async def show_prices(callback_query: CallbackQuery, state: FSMContext):
             message += (
                 f"----------------\n"
                 f"*На дату {price.date_at.strftime('%d.%m.%Y')}:*\n"
-                f"Объем: {price.volume} МТ\n"
+                f"Объем партии: {price.volume} МТ\n"
                 f"Цена {"с учетом НДС" if price.vat_required == 'Yes' else 'без учета НДС'}: {price.price} Руб/МТ\n"
                 f"Область: {price.region}\n"
                 f"Район: {price.district}\n"
